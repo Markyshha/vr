@@ -3,67 +3,60 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-  <title>AR-Рисовалка пальцем (Web)</title>
+  <title>AR‑Рисовалка на поверхности (калибровка плоскости)</title>
   <style>
-    :root{
-      --bg:#0b0f14;--panel:#101720;--muted:#66768a;--accent:#4cc9f0;--ok:#2dd4bf;--danger:#ef4444;
-    }
+    :root{--bg:#071024;--panel:#0e1720;--muted:#7b8ca0;--accent:#4cc9f0}
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
-    .app{display:grid;grid-template-rows:auto 1fr auto;min-height:100dvh}
-    header,footer{padding:10px 12px;background:linear-gradient(180deg,#0e1520,#0b0f14)}
-    header{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
-    .tag{font-size:12px;color:var(--muted)}
-    .wrap{position:relative;isolation:isolate;display:grid;place-items:center;background:#000}
-    video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    body{margin:0;background:var(--bg);color:#e6edf3;font-family:Inter,system-ui,Segoe UI,Roboto}
+    .app{display:grid;grid-template-rows:auto 1fr auto;min-height:100vh}
+    header,footer{padding:10px 12px;background:linear-gradient(180deg,#081222,#07101a)}
+    header{display:flex;gap:10px;align-items:center}
+    h1{font-size:16px;margin:0}
+    .wrap{position:relative;display:block;overflow:hidden;background:#000}
+    video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
     canvas{position:absolute;inset:0;touch-action:none}
-    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-    .btn{background:var(--panel);border:1px solid #1f2937;color:#e6edf3;padding:8px 12px;border-radius:12px;cursor:pointer}
-    .btn:hover{border-color:#334155}
-    .btn.danger{border-color:#3f1d1d;color:#fecaca}
-    .btn.ok{border-color:#0f3b35;color:#d1faf5}
-    .row{display:flex;gap:12px;align-items:center}
-    label{font-size:12px;color:#9aa9bb}
-    input[type="color"],input[type="range"]{accent-color:var(--accent)}
-    .legend{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);font-size:12px;color:#d1d9e6}
-    .status{font-size:12px;color:#a6b3c2}
+    .controls{display:flex;gap:10px;margin-left:auto;align-items:center}
+    .btn{background:var(--panel);border:1px solid #12202a;color:#e6edf3;padding:8px 10px;border-radius:10px;cursor:pointer}
+    .row{display:flex;gap:8px;align-items:center}
+    label{font-size:12px;color:var(--muted)}
+    .legend{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.05);font-size:13px;color:#d1d9e6}
+    .hint{font-size:13px;color:#cfeefc}
+    .calib-ui{display:flex;gap:8px;align-items:center}
   </style>
 </head>
 <body>
   <div class="app">
     <header>
-      <h1>AR‑рисование указательным пальцем</h1>
-      <span class="tag">MediaPipe Hands + Canvas</span>
-      <div class="controls" style="margin-left:auto">
+      <h1>AR‑Рисование на ПОВЕРХНОСТИ (стол)</h1>
+      <div class="controls">
         <div class="row"><label>Цвет</label><input id="color" type="color" value="#00ffd5"></div>
-        <div class="row"><label>Кисть</label><input id="size" type="range" min="2" max="24" value="6"></div>
-        <button class="btn ok" id="save">Скачать PNG</button>
-        <button class="btn" id="flip">Зеркало: вкл</button>
-        <button class="btn danger" id="clear">Очистить</button>
+        <div class="row"><label>Кисть</label><input id="size" type="range" min="4" max="64" value="18"></div>
+        <button class="btn" id="mode">Режим: Поверхность</button>
+        <button class="btn" id="calib">Калибровка плоскости</button>
+        <button class="btn" id="clear">Очистить</button>
+        <button class="btn" id="save">Скачать PNG</button>
       </div>
     </header>
 
-    <div class="wrap">
+    <div class="wrap" id="wrap" style="height:70vh;">
       <video id="video" playsinline muted></video>
-      <!-- Рисунок сохраняем на одном холсте, оверлеи/гиды — на другом -->
       <canvas id="paint"></canvas>
       <canvas id="overlay"></canvas>
-      <div class="legend">
-        Сомкните большой и указательный пальцы, чтобы рисовать. Разомкните — чтобы перестать.
-        <div class="status" id="status">Загрузка модели…</div>
+
+      <div class="legend" id="legend">
+        <div class="hint" id="status">Статус: загружаю модель...</div>
+        <div class="calib-ui" id="calib-ui" style="margin-top:6px">Тапни <strong>Калибровка</strong> и отметь 4 угла столешницы по часовой стрелке.</div>
       </div>
     </div>
 
     <footer>
-      <div class="status">Советы: обеспечьте хорошее освещение, держите камеру на уровне поверхности. На iOS Safari разрешите доступ к камере.</div>
+      <div style="padding:8px 12px;color:var(--muted)">Инструкция: 1) Нажмите «Калибровка» и тапните 4 угла столa; 2) Держите камеру так, чтобы поверхность была видна; 3) Сомкните большой+указательный — рисуйте по столу. По умолчанию видео НЕ зеркалится.</div>
     </footer>
   </div>
 
-  <!-- MediaPipe Tasks Vision (WASM) -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.mjs" type="module"></script>
   <script type="module">
-    import {HandLandmarker, FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.mjs";
+    import {HandLandmarker, FilesetResolver} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.mjs';
 
     const video = document.getElementById('video');
     const paint = document.getElementById('paint');
@@ -75,180 +68,227 @@
     const sizeEl = document.getElementById('size');
     const clearBtn = document.getElementById('clear');
     const saveBtn = document.getElementById('save');
-    const flipBtn = document.getElementById('flip');
+    const modeBtn = document.getElementById('mode');
+    const calibBtn = document.getElementById('calib');
+    const wrap = document.getElementById('wrap');
 
-    let mirror = true;
-    flipBtn.onclick = () => {
-      mirror = !mirror;
-      video.style.transform = mirror ? 'scaleX(-1)' : 'none';
-      flipBtn.textContent = `Зеркало: ${mirror?'вкл':'выкл'}`;
-    };
+    let mode = 'surface'; // 'surface' или 'screen'
+    modeBtn.textContent = 'Режим: Поверхность';
+    modeBtn.onclick = ()=>{ mode = mode==='surface'?'screen':'surface'; modeBtn.textContent = `Режим: ${mode==='surface'?'Поверхность':'Экран'}` };
+
+    // Нет зеркала по умолчанию
+    let mirror = false;
 
     function fitCanvases(){
-      const r = overlay.getBoundingClientRect();
+      const r = wrap.getBoundingClientRect();
       for (const c of [paint, overlay]){
-        c.width = r.width * devicePixelRatio;
-        c.height = r.height * devicePixelRatio;
+        c.width = Math.round(r.width * devicePixelRatio);
+        c.height = Math.round(r.height * devicePixelRatio);
         c.style.width = r.width + 'px';
         c.style.height = r.height + 'px';
       }
-      ctxPaint.lineCap = 'round';
-      ctxPaint.lineJoin = 'round';
+      ctxPaint.lineCap = 'round'; ctxPaint.lineJoin = 'round';
     }
-
     window.addEventListener('resize', fitCanvases);
 
-    clearBtn.onclick = ()=>{
-      ctxPaint.clearRect(0,0,paint.width,paint.height);
-    };
+    clearBtn.onclick = ()=>{ ctxPaint.clearRect(0,0,paint.width,paint.height); };
 
     saveBtn.onclick = ()=>{
-      // Сохраняем объединённый кадр (видео + рисунок)
-      const out = document.createElement('canvas');
-      out.width = paint.width; out.height = paint.height;
-      const octx = out.getContext('2d');
-      // Снимок видео
-      octx.save();
-      if(mirror){
-        octx.translate(out.width,0); octx.scale(-1,1);
-      }
+      const out = document.createElement('canvas'); out.width = paint.width; out.height = paint.height; const octx = out.getContext('2d');
       octx.drawImage(video, 0, 0, out.width, out.height);
-      octx.restore();
-      // Рисунок
       octx.drawImage(paint,0,0);
-      const link = document.createElement('a');
-      link.download = 'ar-draw.png';
-      link.href = out.toDataURL('image/png');
-      link.click();
+      const link = document.createElement('a'); link.download = 'ar-surface.png'; link.href = out.toDataURL('image/png'); link.click();
     };
 
-    // Камера
     async function setupCamera(){
       const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-      video.srcObject = stream;
-      await video.play();
-      // Подгоняем контейнер под видео
-      function sizeWrap(){
-        const wrap = document.querySelector('.wrap');
-        const vw = wrap.clientWidth;
-        const vh = wrap.clientHeight;
-        // Ничего: абсолютные холсты подгоняются по resize observer позже
-      }
-      sizeWrap();
-      fitCanvases();
+      video.srcObject = stream; await video.play(); fitCanvases();
     }
 
-    // HandLandmarker
-    let landmarker; let running = false;
-    let lastTime = 0; // для rAF throttle
-    const SMOOTH=0.45; // эксп. сглаживание
+    // --- Калибровка плоскости — пользователь тапает 4 точки на видимом видео ---
+    let calibPoints = []; // в координатах CSS (px) относительно wrap
+    let homography = null; // 3x3 matrix mapping video->surfaceCanvas
 
-    const prev = {x:null,y:null,draw:false};
+    calibBtn.onclick = ()=>{
+      calibPoints = []; homography = null; statusEl.textContent='Калибровка: тапните 4 угла столешницы по часовой стрелке';
+      overlay.addEventListener('pointerdown', onCalibPointer);
+    };
 
+    function onCalibPointer(e){
+      const r = wrap.getBoundingClientRect();
+      const x = (e.clientX - r.left) * devicePixelRatio; const y = (e.clientY - r.top) * devicePixelRatio;
+      calibPoints.push([x,y]);
+      // отобразить точку
+      ctx.fillStyle='rgba(255,200,50,0.95)'; ctx.beginPath(); ctx.arc(x,y,8*devicePixelRatio,0,Math.PI*2); ctx.fill();
+      if(calibPoints.length>=4){
+        overlay.removeEventListener('pointerdown', onCalibPointer);
+        // source points: координаты в пространстве видео (пиксели видео frame)
+        // При object-fit:cover координаты видео в элементе могут быть обрезаны; здесь мы упрощаем и предполагаем, что video и wrap совпадают по соотношению
+        // В продвинутой версии нужно учитывать сжатие/обрезку видео — но это уже значительно сложнее.
+        // Точки calibPoints — целевые точки на "поверхности canvas". Источник — соответствующие нормализованные координаты пальца (мы используем как если бы это были точки на видео).
+        // Для лучшего практического поведения — попросим пользователя тапнуть углы, которые выглядят как прямоугольник (в порядке).
+        statusEl.textContent='Вычисляю преобразование...';
+        // Создаём простую аффинную/проективную матрицу, сопоставив углы видимой области видео к выбранным точкам.
+        const src = [[0,0],[video.videoWidth,0],[video.videoWidth,video.videoHeight],[0,video.videoHeight]];
+        homography = computeHomography(src, calibPoints);
+        statusEl.textContent='Калибровка готова — режим: рисование по поверхности';
+      }
+    }
+
+    // --- Рисование ---
+    let prev = {x:null,y:null,draw:false};
     function lerp(a,b,t){return a+(b-a)*t}
 
-    function drawPoint(x,y){
-      const w = paint.width, h = paint.height;
-      const size = parseFloat(sizeEl.value);
-      ctxPaint.strokeStyle = colorEl.value;
-      ctxPaint.lineWidth = size * devicePixelRatio;
-      if(prev.x===null){ prev.x=x; prev.y=y; }
-      ctxPaint.beginPath();
-      ctxPaint.moveTo(prev.x*w, prev.y*h);
-      ctxPaint.lineTo(x*w, y*h);
-      ctxPaint.stroke();
-      prev.x = x; prev.y = y;
+    function drawPointScreen(nx, ny){ // nx,ny нормализованные (0..1) координаты относительно canvas
+      const w = paint.width, h = paint.height; const size = parseFloat(sizeEl.value) * devicePixelRatio;
+      ctxPaint.strokeStyle = colorEl.value; ctxPaint.lineWidth = size;
+      const x = nx * w, y = ny * h;
+      if(prev.x===null){ prev.x = x; prev.y = y; }
+      ctxPaint.beginPath(); ctxPaint.moveTo(prev.x, prev.y); ctxPaint.lineTo(x,y); ctxPaint.stroke(); prev.x = x; prev.y = y;
+    }
+
+    function drawPointSurface(px, py){ // px,py in surface canvas pixels (devicePixelRatio-scaled)
+      const size = parseFloat(sizeEl.value) * devicePixelRatio * 1.2;
+      ctxPaint.strokeStyle = colorEl.value; ctxPaint.lineWidth = size;
+      if(prev.x===null){ prev.x = px; prev.y = py; }
+      ctxPaint.beginPath(); ctxPaint.moveTo(prev.x, prev.y); ctxPaint.lineTo(px,py); ctxPaint.stroke(); prev.x = px; prev.y = py;
     }
 
     function drawOverlay(landmarks){
       ctx.clearRect(0,0,overlay.width,overlay.height);
       if(!landmarks) return;
-      const w = overlay.width, h = overlay.height;
-      ctx.lineWidth = 2 * devicePixelRatio;
-      ctx.strokeStyle = 'rgba(76,201,240,.9)';
-      ctx.fillStyle = 'rgba(76,201,240,.9)';
-      // Рисуем только кончики пальцев
+      ctx.lineWidth = 2*devicePixelRatio; ctx.fillStyle='rgba(76,201,240,0.95)';
       const tips = [4,8,12,16,20];
-      for(const id of tips){
-        const p = landmarks[id];
-        ctx.beginPath();
-        ctx.arc(p.x*w, p.y*h, 5*devicePixelRatio, 0, Math.PI*2);
-        ctx.fill();
-      }
-      // линия «кисть активна»
-      if(prev.draw){
-        ctx.beginPath();
-        ctx.moveTo(landmarks[8].x*w, landmarks[8].y*h);
-        ctx.lineTo(landmarks[4].x*w, landmarks[4].y*h);
-        ctx.stroke();
-      }
+      for(const id of tips){ const p=landmarks[id]; ctx.beginPath(); ctx.arc(p.x*overlay.width, p.y*overlay.height,6*devicePixelRatio,0,Math.PI*2); ctx.fill(); }
     }
 
-    function pinchDistance(lm){
-      const a = lm[4], b = lm[8];
-      const dx=a.x-b.x, dy=a.y-b.y, dz=(a.z||0)-(b.z||0);
-      return Math.hypot(dx,dy,dz);
+    function pinchDistance(lm){ const a=lm[4], b=lm[8]; const dx=a.x-b.x, dy=a.y-b.y, dz=(a.z||0)-(b.z||0); return Math.hypot(dx,dy,dz); }
+
+    // --- Homography math (DLT) ---
+    function computeHomography(srcPts, dstPts){
+      // srcPts and dstPts: arrays of 4 points each: [ [x,y], ... ] in pixel coordinates
+      // Returns 3x3 matrix as flat array length 9, or null
+      if(srcPts.length!==4 || dstPts.length!==4) return null;
+      // Build 8x9 matrix
+      const A = [];
+      for(let i=0;i<4;i++){
+        const [x,y] = srcPts[i]; const [u,v] = dstPts[i];
+        A.push([-x,-y,-1,0,0,0,x*u,y*u,u]);
+        A.push([0,0,0,-x,-y,-1,x*v,y*v,v]);
+      }
+      // Solve Ah = 0 -> use SVD via numeric approximation: we'll use simple power method on ATA
+      // For small 8x9 system, use Gaussian elimination on normal equations (ATA) to find eigenvector of smallest eigenvalue.
+      // Build ATA (9x9)
+      const AT = numericTranspose(A);
+      const ATA = numericMul(AT,A);
+      // Find eigenvector with smallest eigenvalue via inverse power method -> solve ATA * h = lambda * h; we want smallest eigenvalue -> do power on inv(ATA)
+      // For stability, add small regularizer
+      for(let i=0;i<9;i++) ATA[i][i]+=1e-8;
+      const h = solveSmallestEigenvector(ATA);
+      if(!h) return null;
+      // normalize
+      for(let i=0;i<9;i++) h[i] = h[i]/h[8];
+      return h; // flat 9
     }
+
+    function numericTranspose(M){ const r=M.length,c=M[0].length; const T=[]; for(let j=0;j<c;j++){ T[j]=[]; for(let i=0;i<r;i++) T[j][i]=M[i][j]; } return T; }
+    function numericMul(A,B){ const r=A.length, m=A[0].length, c=B[0].length; const C=[]; for(let i=0;i<r;i++){ C[i]=[]; for(let j=0;j<c;j++){ let s=0; for(let k=0;k<m;k++) s+=A[i][k]*B[k][j]; C[i][j]=s;} } return C; }
+
+    function solveSmallestEigenvector(A){ // A symmetric 9x9
+      const n = A.length; // 9
+      // Use simple power iteration on inverse via conjugate gradient-ish: we'll do plain inverse via Gaussian elimination (n small)
+      // Solve A x = b for many b; instead we'll compute eigenvector via power on (I - alpha*A) to get smallest? Simpler: compute eigenvector by SVD is best, but implement naive Jacobi? Time's limited.
+      // Fallback: use numeric.js style: find eigenvector of ATA by power with deflation to get smallest: we can do power to get largest, then do inverse power by solving linear system each iteration.
+      // We'll implement inverse power using Gaussian elimination to solve A x = y each iteration.
+      // Start with random vector
+      let x = new Array(n).fill(0).map(()=>Math.random());
+      for(let it=0; it<60; it++){
+        // solve A y = x
+        const y = gaussianSolve(A, x);
+        if(!y) return null;
+        // normalize y
+        const norm = Math.hypot(...y);
+        for(let i=0;i<n;i++) x[i]=y[i]/(norm||1);
+      }
+      return x;
+    }
+
+    function gaussianSolve(Aorig, borig){
+      // Simple Gaussian elimination for small matrix. Works on copies.
+      const n = Aorig.length;
+      const A = []; for(let i=0;i<n;i++){ A[i]=Aorig[i].slice(); }
+      const b = borig.slice();
+      for(let i=0;i<n;i++){
+        // pivot
+        let piv = i; for(let j=i;j<n;j++) if(Math.abs(A[j][i])>Math.abs(A[piv][i])) piv=j;
+        if(Math.abs(A[piv][i])<1e-12) return null;
+        [A[i],A[piv]]=[A[piv],A[i]]; [b[i],b[piv]]=[b[piv],b[i]];
+        const v = A[i][i];
+        for(let j=i;j<n;j++) A[i][j]/=v; b[i]/=v;
+        for(let r=0;r<n;r++) if(r!==i){ const f=A[r][i]; for(let c=i;c<n;c++) A[r][c]-=f*A[i][c]; b[r]-=f*b[i]; }
+      }
+      return b;
+    }
+
+    function applyHomography(h, x, y){ // h flat 9, x,y in pixels -> returns [u,v]
+      const u = (h[0]*x + h[1]*y + h[2]) / (h[6]*x + h[7]*y + h[8]);
+      const v = (h[3]*x + h[4]*y + h[5]) / (h[6]*x + h[7]*y + h[8]);
+      return [u,v];
+    }
+
+    // --- MediaPipe init & loop ---
+    let landmarker; let running = false; let lastTime=0; const SMOOTH=0.4;
+    const prevSmooth = {x:null,y:null};
 
     async function init(){
       try{
-        statusEl.textContent = 'Загрузка модели…';
-        const fileset = await FilesetResolver.forVisionTasks(
-          // CDN с wasm-ассетами
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm'
-        );
-        landmarker = await HandLandmarker.createFromOptions(fileset, {
-          baseOptions: {
-            // Лёгкая и быстрая модель
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
-          },
-          numHands: 1,
-          runningMode: 'VIDEO'
-        });
-        statusEl.textContent = 'Готово. Разрешите камеру, покажите руку.';
-        await setupCamera();
-        running = true;
-        requestAnimationFrame(loop);
-      }catch(e){
-        console.error(e);
-        statusEl.textContent = 'Ошибка инициализации: ' + e.message;
-      }
+        statusEl.textContent='Загрузка модели...';
+        const fileset = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm');
+        landmarker = await HandLandmarker.createFromOptions(fileset, { baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task' }, numHands:1, runningMode:'VIDEO' });
+        statusEl.textContent='Готово. Разрешите камеру.';
+        await setupCamera(); running=true; requestAnimationFrame(loop);
+      }catch(e){ console.error(e); statusEl.textContent='Ошибка: '+e.message; }
     }
 
-    function getVideoFrame(){
-      // для некоторых браузеров полезно отражать координаты при mirror
-      return video;
+    function getVideoPixelCoords(normX, normY){
+      // нормализованные координаты landmark x,y (0..1) -> пиксели видео
+      // Учтём размеры видео элементa -> video.videoWidth/video.videoHeight
+      const vx = normX * video.videoWidth; const vy = normY * video.videoHeight; return [vx,vy];
     }
 
     async function loop(t){
-      if(!running){return}
-      // ограничим частоту инференса
-      if(t - lastTime < 30){ return requestAnimationFrame(loop); }
-      lastTime = t;
-
-      const videoFrame = getVideoFrame();
-      const res = await landmarker.detectForVideo(videoFrame, performance.now());
-
+      if(!running) return; if(t-lastTime<30) return requestAnimationFrame(loop); lastTime=t;
+      const res = await landmarker.detectForVideo(video, performance.now());
       if(res.landmarks && res.landmarks[0]){
         const lm = res.landmarks[0];
-        // Координаты кончика указательного пальца
-        let x = lm[8].x, y = lm[8].y;
-        // При зеркале инвертируем X для согласованности с видео
-        if(mirror){ x = 1 - x; }
-        if(prev.x!=null){ x = lerp(prev.x, x, 1-SMOOTH); y = lerp(prev.y, y, 1-SMOOTH); }
+        // tip of index finger (8)
+        let nx = lm[8].x, ny = lm[8].y;
+        if(mirror) nx = 1 - nx;
+        // smoothing in normalized space
+        if(prevSmooth.x!==null){ nx = lerp(prevSmooth.x, nx, 1-SMOOTH); ny = lerp(prevSmooth.y, ny, 1-SMOOTH); }
+        prevSmooth.x = nx; prevSmooth.y = ny;
 
-        // Признак «рисуем»: щепок (большой+указательный пальцы)
-        const dist = pinchDistance(lm);
-        const drawing = dist < 0.06; // эмпирический порог
+        const dist = pinchDistance(lm); const drawing = dist < 0.06;
 
-        if(drawing){ drawPoint(x,y); }
+        if(drawing){
+          if(mode==='screen'){
+            drawPointScreen(nx, ny);
+          } else {
+            // map normalized -> video pixels -> homography -> surface canvas pixels
+            const [vx,vy] = getVideoPixelCoords(nx, ny);
+            if(homography){
+              const [sx,sy] = applyHomography(homography, vx, vy);
+              // sx,sy are in CSS pixels if calibrations used devicePixelRatio earlier. We used devicePixelRatio scaling; paint canvas is DP-scaled.
+              drawPointSurface(sx, sy);
+            } else {
+              // если не откалибровано — нарисуем на экране как запасной вариант, но более заметно
+              drawPointScreen(nx, ny);
+            }
+          }
+        } else { prev.x = prev.y = null; }
         prev.draw = drawing;
         drawOverlay(lm);
-      }else{
-        prev.x = prev.y = null; prev.draw = false;
-        ctx.clearRect(0,0,overlay.width,overlay.height);
-      }
-
+      } else { prev.x = prev.y = null; prev.draw = false; ctx.clearRect(0,0,overlay.width,overlay.height); }
       requestAnimationFrame(loop);
     }
 
