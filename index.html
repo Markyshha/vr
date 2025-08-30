@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>VR Камера</title>
+  <title>VR Камера с приближением/отдалением</title>
   <style>
     body {
       margin: 0;
@@ -18,7 +18,7 @@
       width: 50vw;
       height: 100vh;
       object-fit: cover;
-      transform: scale(var(--zoom, 1)) translateX(var(--shift, 0px));
+      transform: scale(1);
     }
     #controls {
       position: fixed;
@@ -30,6 +30,9 @@
       padding: 10px;
       border-radius: 10px;
       font-size: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
     }
     #controls label {
       margin-right: 10px;
@@ -43,8 +46,9 @@
   </div>
 
   <div id="controls">
-    <label>Зум: <input type="range" id="zoom" min="1" max="2" step="0.01" value="1"></label>
-    <label>Смещение: <input type="range" id="shift" min="-100" max="100" step="1" value="0"></label>
+    <label>Zoom Левый глаз: <input type="range" id="zoomLeft" min="0.5" max="2" step="0.01" value="1"></label>
+    <label>Zoom Правый глаз: <input type="range" id="zoomRight" min="0.5" max="2" step="0.01" value="1"></label>
+    <label>Общий сдвиг: <input type="range" id="shift" min="-100" max="100" step="1" value="0"></label>
     <button id="fullscreen">Фуллскрин</button>
   </div>
 
@@ -52,23 +56,25 @@
     const left = document.getElementById('left');
     const right = document.getElementById('right');
 
-    // Настройки линз
-    const root = document.documentElement;
-    document.getElementById('zoom').addEventListener('input', e => {
-      root.style.setProperty('--zoom', e.target.value);
-    });
-    document.getElementById('shift').addEventListener('input', e => {
-      root.style.setProperty('--shift', e.target.value + 'px');
+    const zoomLeftSlider = document.getElementById('zoomLeft');
+    const zoomRightSlider = document.getElementById('zoomRight');
+    const shiftSlider = document.getElementById('shift');
+
+    function updateTransforms() {
+      left.style.transform = `scale(${zoomLeftSlider.value}) translateX(${shiftSlider.value}px)`;
+      right.style.transform = `scale(${zoomRightSlider.value}) translateX(${shiftSlider.value}px)`;
+    }
+
+    [zoomLeftSlider, zoomRightSlider, shiftSlider].forEach(slider => {
+      slider.addEventListener('input', updateTransforms);
     });
 
-    // Фуллскрин фикс
     document.getElementById('fullscreen').addEventListener('click', () => {
       if (document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen();
       }
     });
 
-    // Камера
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -89,6 +95,7 @@
     }
 
     startCamera();
+    updateTransforms();
   </script>
 </body>
 </html>
