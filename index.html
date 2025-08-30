@@ -31,12 +31,21 @@
       position: relative;
       overflow: hidden;
       background: black;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
     video, canvas {
       position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      top: 0; 
+      left: 0;
+      width: 100%; 
+      height: 100%;
       object-fit: cover;
+
+      /* Делаем форму как на VR-очках */
+      clip-path: ellipse(95% 90% at 50% 50%);
+      background: black;
     }
     #canvasL, #canvasR {
       pointer-events: none;
