@@ -1,101 +1,231 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>VR Камера с приближением/отдалением</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>VR Cardboard Camera — Hands + Full FPS</title>
   <style>
-    body {
-      margin: 0;
-      background: black;
-      overflow: hidden;
-    }
-    #container {
-      display: flex;
-      width: 100vw;
-      height: 100vh;
-    }
-    video {
-      width: 50vw;
-      height: 100vh;
-      object-fit: cover;
-      transform: scale(1);
-    }
-    #controls {
-      position: fixed;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.6);
-      color: white;
-      padding: 10px;
-      border-radius: 10px;
-      font-size: 14px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-    #controls label {
-      margin-right: 10px;
-    }
+    :root{ --bg:#000; --panel:rgba(0,0,0,0.6); --accent:#4ade80 }
+    html,body{height:100%; margin:0; background:var(--bg); color:#fff; font-family:Inter, Roboto, sans-serif}
+    #app{position:fixed; inset:0; display:flex; flex-direction:column}
+    canvas{flex:1; width:100%; height:100%; display:block; background:#000}
+    .topbar{position:fixed; left:12px; top:12px; display:flex; gap:8px; align-items:center; z-index:60}
+    .btn{background:rgba(255,255,255,0.06); padding:10px 12px; border-radius:12px; font-weight:700; cursor:pointer}
+    .controls{position:fixed; right:12px; top:12px; width:320px; max-width:40vw; background:var(--panel); padding:14px; border-radius:14px; backdrop-filter:blur(8px); box-shadow:0 12px 40px rgba(0,0,0,0.6); display:flex; flex-direction:column; gap:12px; z-index:50}
+    .controls h3{margin:0; font-size:16px}
+    .group{display:flex; flex-direction:column; gap:8px}
+    .labelRow{display:flex; justify-content:space-between; align-items:center}
+    .val{min-width:64px; text-align:right}
+    .smallPill{background:rgba(255,255,255,0.06); padding:6px 8px; border-radius:10px; font-weight:700}
+    @media (max-width:720px){ .controls{left:8px; right:8px; top:auto; bottom:12px; width:auto; max-width:calc(100% - 16px);} }
   </style>
 </head>
 <body>
-  <div id="container">
-    <video id="left" autoplay playsinline></video>
-    <video id="right" autoplay playsinline></video>
+  <div id="app">
+    <canvas id="view" aria-label="Split VR camera view"></canvas>
+
+    <div class="topbar">
+      <button id="fullscreenBtn" class="btn">Полный экран</button>
+      <button id="switchBtn" class="btn">Смена камеры</button>
+      <button id="hideBtn" class="btn">Скрыть настройки</button>
+    </div>
+
+    <div class="controls" id="controls" role="region" aria-label="Панель управления">
+      <h3>Управление VR-картинкой</h3>
+      <div class="group">
+        <div class="labelRow"><label>Масштаб</label><div class="val" id="zoomVal">1.25×</div></div>
+        <input id="zoom" type="range" min="1" max="3" step="0.01" value="1.25" />
+      </div>
+      <div class="group">
+        <div class="labelRow"><label>Зазор между глазами</label><div class="val" id="gapVal">8 px</div></div>
+        <input id="gap" type="range" min="0" max="60" step="1" value="8" />
+      </div>
+      <div class="group">
+        <div class="labelRow"><label>Режим отрисовки рук</label><div class="val" id="handsVal">Включено</div></div>
+        <button id="toggleHands" class="btn">Вкл/Выкл руки</button>
+      </div>
+      <div class="group">
+        <div style="display:flex; gap:8px; align-items:center">
+          <button id="resetBtn" class="btn">Сброс</button>
+          <div style="flex:1"></div>
+          <div class="smallPill" id="status">Готово</div>
+        </div>
+      </div>
+    </div>
+
+    <video id="cam" playsinline autoplay muted style="display:none"></video>
   </div>
 
-  <div id="controls">
-    <label>Zoom Левый глаз: <input type="range" id="zoomLeft" min="0.5" max="2" step="0.01" value="1"></label>
-    <label>Zoom Правый глаз: <input type="range" id="zoomRight" min="0.5" max="2" step="0.01" value="1"></label>
-    <label>Общий сдвиг: <input type="range" id="shift" min="-100" max="100" step="1" value="0"></label>
-    <button id="fullscreen">Фуллскрин</button>
-  </div>
+  <!-- MediaPipe Hands (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.4/camera_utils.js"></script>
 
-  <script>
-    const left = document.getElementById('left');
-    const right = document.getElementById('right');
+<script>
+(async ()=>{
+  const canvas = document.getElementById('view');
+  const ctx = canvas.getContext('2d', { alpha:false, desynchronized:true });
+  const video = document.getElementById('cam');
+  const zoom = document.getElementById('zoom');
+  const gap = document.getElementById('gap');
+  const zoomVal = document.getElementById('zoomVal');
+  const gapVal = document.getElementById('gapVal');
+  const status = document.getElementById('status');
+  const controls = document.getElementById('controls');
+  const hideBtn = document.getElementById('hideBtn');
+  const toggleHands = document.getElementById('toggleHands');
+  const handsVal = document.getElementById('handsVal');
 
-    const zoomLeftSlider = document.getElementById('zoomLeft');
-    const zoomRightSlider = document.getElementById('zoomRight');
-    const shiftSlider = document.getElementById('shift');
+  function setStatus(t){ status.textContent = t; }
+  function fitCanvas(){ const dpr=Math.min(window.devicePixelRatio||1,2); const w=innerWidth; const h=innerHeight; canvas.width=Math.round(w*dpr); canvas.height=Math.round(h*dpr); canvas.style.width=w+'px'; canvas.style.height=h+'px'; }
+  addEventListener('resize', fitCanvas, { passive:true }); fitCanvas();
 
-    function updateTransforms() {
-      left.style.transform = `scale(${zoomLeftSlider.value}) translateX(${shiftSlider.value}px)`;
-      right.style.transform = `scale(${zoomRightSlider.value}) translateX(${shiftSlider.value}px)`;
-    }
+  let running=false; let currentDeviceId=null; let showHands=true; let cameraInstance=null;
 
-    [zoomLeftSlider, zoomRightSlider, shiftSlider].forEach(slider => {
-      slider.addEventListener('input', updateTransforms);
-    });
+  // target "very high fps" — try to use native video frame callbacks and max frameRate request
+  const TARGET_FPS = 120; // best-effort; real fps depends on device
 
-    document.getElementById('fullscreen').addEventListener('click', () => {
-      if (document.documentElement.requestFullscreen) {
-        document.documentElement.requestFullscreen();
+  // MediaPipe Hands setup
+  const hands = new window.Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`});
+  hands.setOptions({maxNumHands:2, modelComplexity:1, minDetectionConfidence:0.6, minTrackingConfidence:0.6});
+
+  let latestLandmarks = null; // store for rendering overlay
+  hands.onResults((results)=>{
+    latestLandmarks = results.multiHandLandmarks || null;
+  });
+
+  async function getCameras(){ try{ const devs = await navigator.mediaDevices.enumerateDevices(); return devs.filter(d=>d.kind==='videoinput'); }catch(e){ return []; } }
+
+  async function startStream(preferBack=true){
+    if (video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+    const constraints = {
+      audio:false,
+      video: {
+        deviceId: currentDeviceId ? { exact: currentDeviceId } : undefined,
+        facingMode: currentDeviceId ? undefined : (preferBack ? { ideal:'environment' } : { ideal:'user' }),
+        frameRate: { ideal: TARGET_FPS },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
       }
-    });
+    };
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+      const track = stream.getVideoTracks()[0].getSettings();
+      currentDeviceId = track.deviceId || currentDeviceId;
+      setStatus(`${track.width||''}×${track.height||''} @ ${track.frameRate||''}fps`);
 
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 60 }
-          },
-          audio: false
-        });
-        left.srcObject = stream;
-        right.srcObject = stream;
-      } catch (err) {
-        alert("Ошибка доступа к камере: " + err);
-        console.error(err);
+      // Attach camera utils for MediaPipe processing
+      if (cameraInstance) cameraInstance.stop();
+      cameraInstance = new window.Camera(video, { onFrame: async () => { await hands.send({ image: video }); }, width: video.videoWidth || 1280, height: video.videoHeight || 720, fps: TARGET_FPS });
+      cameraInstance.start();
+
+      if (!running){ running = true; renderLoop(); }
+    }catch(e){ console.error(e); setStatus('Ошибка доступа к камере'); }
+  }
+
+  function drawHandModel(landmarks, scaleX, scaleY){
+    // Draw a simple stylized filled glove following landmarks
+    // landmarks: array of 21 pts normalized [0..1]
+    ctx.save();
+    ctx.lineWidth = 3; ctx.lineJoin='round'; ctx.lineCap='round';
+    // draw fingers
+    const fingers = [ [0,1,2,3,4], [0,5,6,7,8], [0,9,10,11,12], [0,13,14,15,16], [0,17,18,19,20] ];
+    for (const finger of fingers){
+      ctx.beginPath();
+      for (let i=0;i<finger.length;i++){
+        const p = landmarks[finger[i]]; const x = p.x * scaleX; const y = p.y * scaleY;
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = 'rgba(0,200,160,0.95)'; ctx.stroke();
+    }
+    // palm convex shape (rough) — use key points
+    const palmIdx = [0,5,9,13,17];
+    ctx.beginPath();
+    for (let i=0;i<palmIdx.length;i++){ const p=landmarks[palmIdx[i]]; const x=p.x*scaleX; const y=p.y*scaleY; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+    ctx.closePath(); ctx.fillStyle='rgba(0,200,160,0.12)'; ctx.fill(); ctx.strokeStyle='rgba(0,200,160,0.6)'; ctx.stroke();
+
+    // draw joints as small circles
+    for (const p of landmarks){ const x=p.x*scaleX; const y=p.y*scaleY; ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2); ctx.fillStyle='rgba(0,200,160,0.9)'; ctx.fill(); }
+    ctx.restore();
+  }
+
+  function draw(){
+    const dpr = Math.min(window.devicePixelRatio||1, 2);
+    const W = canvas.width; const H = canvas.height;
+    const gapPx = Math.round(Number(gap.value) * dpr);
+    ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+
+    const vw = video.videoWidth || 1280; const vh = video.videoHeight || 720;
+    if (!vw || !vh) return;
+
+    const zoomK = Number(zoom.value);
+    const halfW = Math.floor((W - gapPx)/2);
+    const aspectCanvas = halfW / H;
+    const aspectVideo = vw / vh;
+    let sw, sh;
+    if (aspectVideo > aspectCanvas){ sh = vh / zoomK; sw = sh * aspectCanvas; } else { sw = vw / zoomK; sh = sw / aspectCanvas; }
+    sw = Math.min(sw, vw); sh = Math.min(sh, vh);
+    const sx = (vw - sw)/2; const sy = (vh - sh)/2;
+
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, halfW, H);
+    ctx.drawImage(video, sx, sy, sw, sh, halfW + gapPx, 0, halfW, H);
+
+    // overlay hands: landmarks are normalized to video size — map to canvas positions for left/right
+    if (showHands && latestLandmarks && latestLandmarks.length){
+      // each hand's landmarks are in video coordinate system normalized.
+      for (let h=0; h<latestLandmarks.length; h++){
+        const lm = latestLandmarks[h];
+        // map to left eye area (mirror for stereo feel)
+        // Choose which half to draw on: use handness? MediaPipe gives not here (we didn't request), so alternate
+        const targetIsLeft = (h % 2 === 0);
+        const destX = targetIsLeft ? 0 : (halfW + gapPx);
+        // scale landmarks to half area
+        const scaleX = halfW / sw; const scaleY = H / sh;
+        // But also convert normalized video coords (0..1) to source crop coords
+        const px = (p => (p.x * vw - sx) * scaleX + destX);
+        // create mapped landmarks
+        const mapped = lm.map(p => ({ x: (p.x*vw - sx) * scaleX + destX, y: (p.y*vh - sy) * scaleY }));
+        // now draw using mapped coords but our drawHandModel expects 0..1 normalized — adapt by dividing
+        const norm = lm.map(p=>({ x: p.x, y: p.y }));
+        // We'll draw using mapped coords directly with modified draw function
+        // simple lines
+        ctx.save(); ctx.lineWidth=3; ctx.lineJoin='round'; ctx.lineCap='round'; ctx.strokeStyle='rgba(255,160,50,0.95)'; ctx.fillStyle='rgba(255,160,50,0.12)';
+        // palm
+        const palmIdx=[0,5,9,13,17]; ctx.beginPath(); for (let i=0;i<palmIdx.length;i++){ const m=mapped[palmIdx[i]]; if(i===0) ctx.moveTo(m.x,m.y); else ctx.lineTo(m.x,m.y); } ctx.closePath(); ctx.fill(); ctx.stroke();
+        // fingers
+        const fingers = [ [0,1,2,3,4],[0,5,6,7,8],[0,9,10,11,12],[0,13,14,15,16],[0,17,18,19,20] ];
+        for (const finger of fingers){ ctx.beginPath(); for (let i=0;i<finger.length;i++){ const m=mapped[finger[i]]; if(i===0) ctx.moveTo(m.x,m.y); else ctx.lineTo(m.x,m.y); } ctx.stroke(); }
+        // joints
+        for (const m of mapped){ ctx.beginPath(); ctx.arc(m.x,m.y,5,0,Math.PI*2); ctx.fillStyle='rgba(255,160,50,0.95)'; ctx.fill(); }
+        ctx.restore();
       }
     }
+  }
 
-    startCamera();
-    updateTransforms();
-  </script>
+  // Use requestVideoFrameCallback when available for best throughput
+  let lastPaint = 0;
+  function renderLoop(now){
+    if (!running) return;
+    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype){
+      try{ video.requestVideoFrameCallback(()=>{ draw(); lastPaint = performance.now(); requestAnimationFrame(renderLoop); }); return; }catch(e){}
+    }
+    draw(); lastPaint = performance.now(); requestAnimationFrame(renderLoop);
+  }
+
+  // UI wiring
+  zoom.addEventListener('input', ()=>{ zoomVal.textContent = Number(zoom.value).toFixed(2) + '×'; });
+  gap.addEventListener('input', ()=>{ gapVal.textContent = gap.value + ' px'; });
+  document.getElementById('resetBtn').addEventListener('click', ()=>{ zoom.value='1.25'; gap.value='8'; zoom.dispatchEvent(new Event('input')); gap.dispatchEvent(new Event('input')); setStatus('Сброшено'); });
+  document.getElementById('switchBtn').addEventListener('click', async ()=>{ const cams = await getCameras(); if(!cams.length) return; if(!currentDeviceId) currentDeviceId=cams[0].deviceId; const idx=cams.findIndex(c=>c.deviceId===currentDeviceId); const next=cams[(idx+1)%cams.length]; currentDeviceId = next.deviceId; await startStream(false); });
+  document.getElementById('fullscreenBtn').addEventListener('click', async ()=>{ try{ if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); else await document.exitFullscreen(); }catch(e){} });
+  hideBtn.addEventListener('click', ()=>{ if (controls.style.display === 'none'){ controls.style.display='flex'; hideBtn.textContent='Скрыть настройки'; } else { controls.style.display='none'; hideBtn.textContent='Показать настройки'; } });
+  toggleHands.addEventListener('click', ()=>{ showHands = !showHands; handsVal.textContent = showHands? 'Включено' : 'Выключено'; });
+
+  // start camera + Mediapipe
+  await startStream(true);
+
+})();
+</script>
 </body>
 </html>
