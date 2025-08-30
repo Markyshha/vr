@@ -1,70 +1,107 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VR Камера с отслеживанием рук</title>
   <style>
-    body { margin: 0; background: black; overflow: hidden; }
-    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-    #video { display: none; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      width: 100%;
+      height: 100%;
+    }
+    video {
+      display: none;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.20.0"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 </head>
 <body>
   <video id="video" autoplay playsinline></video>
-  <canvas id="vrCanvas"></canvas>
+  <canvas id="output"></canvas>
 
   <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('vrCanvas');
+    const videoElement = document.getElementById('video');
+    const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
-    let model;
 
-    async function initCamera() {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = stream;
-      return new Promise(resolve => video.onloadedmetadata = resolve);
-    }
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
 
-    async function init() {
-      await initCamera();
-      model = await handpose.load();
-      drawVR();
-    }
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7
+    });
 
-    async function drawVR() {
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({image: videoElement});
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+
+    function onResults(results) {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Левая и правая часть для VR
       const halfWidth = canvas.width / 2;
-      ctx.drawImage(video, 0, 0, halfWidth, canvas.height);
-      ctx.drawImage(video, halfWidth, 0, halfWidth, canvas.height);
+      const height = canvas.height;
 
-      // Отслеживание рук
-      const predictions = await model.estimateHands(video);
-      predictions.forEach(hand => {
-        hand.landmarks.forEach(point => {
-          const [x, y] = point;
-          ctx.fillStyle = "red";
-          ctx.beginPath();
-          ctx.arc(x / video.videoWidth * halfWidth, y / video.videoHeight * canvas.height, 5, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.beginPath();
-          ctx.arc(x / video.videoWidth * halfWidth + halfWidth, y / video.videoHeight * canvas.height, 5, 0, 2 * Math.PI);
-          ctx.fill();
-        });
-      });
+      // Рисуем видео дважды для VR
+      ctx.drawImage(results.image, 0, 0, halfWidth, height);
+      ctx.drawImage(results.image, halfWidth, 0, halfWidth, height);
 
-      requestAnimationFrame(drawVR);
+      // Рисуем руки с обеих сторон
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          drawHand(landmarks, 0, halfWidth, height);
+          drawHand(landmarks, halfWidth, halfWidth, height);
+        }
+      }
     }
 
-    init();
+    function drawHand(landmarks, offsetX, width, height) {
+      const connections = Hands.HAND_CONNECTIONS;
+      ctx.strokeStyle = "lime";
+      ctx.lineWidth = 2;
+      ctx.fillStyle = "red";
+
+      // Соединения
+      for (let [start, end] of connections) {
+        const p1 = landmarks[start];
+        const p2 = landmarks[end];
+        ctx.beginPath();
+        ctx.moveTo(p1.x * width + offsetX, p1.y * height);
+        ctx.lineTo(p2.x * width + offsetX, p2.y * height);
+        ctx.stroke();
+      }
+
+      // Точки
+      for (let point of landmarks) {
+        ctx.beginPath();
+        ctx.arc(point.x * width + offsetX, point.y * height, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
   </script>
 </body>
 </html>
