@@ -12,6 +12,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
+      touch-action: manipulation;
     }
     canvas {
       position: absolute;
@@ -28,6 +29,22 @@
       left: 50%;
       transform: translateX(-50%);
       width: 300px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    #startBtn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 10px 20px;
+      background: white;
+      color: black;
+      border: none;
+      font-size: 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      z-index: 10;
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -38,38 +55,57 @@
   <video id="video" autoplay playsinline></video>
   <canvas id="output"></canvas>
   <input type="range" id="zoom" min="0.3" max="1" step="0.05" value="0.8">
+  <button id="startBtn">Старт</button>
 
   <script>
     const videoElement = document.getElementById('video');
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
     const zoomSlider = document.getElementById('zoom');
+    const startBtn = document.getElementById('startBtn');
 
-    let zoomFactor = 0.8; // начальное приближение
+    let zoomFactor = 0.8;
+    let sliderTimeout = null;
+    let camera, hands;
 
     zoomSlider.addEventListener('input', () => {
       zoomFactor = parseFloat(zoomSlider.value);
+      showSlider();
     });
 
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
+    canvas.addEventListener('click', showSlider);
 
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.7
-    });
+    function showSlider() {
+      zoomSlider.style.opacity = 1;
+      clearTimeout(sliderTimeout);
+      sliderTimeout = setTimeout(() => {
+        zoomSlider.style.opacity = 0;
+      }, 3000);
+    }
 
-    hands.onResults(onResults);
+    startBtn.addEventListener('click', async () => {
+      startBtn.style.display = "none";
 
-    const camera = new Camera(videoElement, {
-      onFrame: async () => { await hands.send({image: videoElement}); },
-      width: 640,
-      height: 480
+      hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
+      });
+
+      hands.onResults(onResults);
+
+      camera = new Camera(videoElement, {
+        onFrame: async () => { await hands.send({image: videoElement}); },
+        width: 640,
+        height: 480
+      });
+      camera.start();
     });
-    camera.start();
 
     function onResults(results) {
       canvas.width = window.innerWidth;
@@ -81,32 +117,22 @@
       const viewHeight = height * zoomFactor;
       const offsetY = (height - viewHeight) / 2;
 
-      // фон
       ctx.fillStyle = "black";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // левая линза
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(halfWidth/2, height/2, viewHeight/2, 0, Math.PI*2);
-      ctx.clip();
-      ctx.drawImage(results.image, halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
-      if (results.multiHandLandmarks) {
-        for (const landmarks of results.multiHandLandmarks) {
-          drawHand(landmarks, halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
-        }
-      }
-      ctx.restore();
+      drawLens(results, halfWidth/2, halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
+      drawLens(results, halfWidth + halfWidth/2, halfWidth + halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
+    }
 
-      // правая линза
+    function drawLens(results, centerX, imgX, imgY, w, h) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(halfWidth + halfWidth/2, height/2, viewHeight/2, 0, Math.PI*2);
+      ctx.arc(centerX, canvas.height/2, h/2, 0, Math.PI*2);
       ctx.clip();
-      ctx.drawImage(results.image, halfWidth + halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
+      ctx.drawImage(results.image, imgX, imgY, w, h);
       if (results.multiHandLandmarks) {
         for (const landmarks of results.multiHandLandmarks) {
-          drawHand(landmarks, halfWidth + halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
+          drawHand(landmarks, imgX, imgY, w, h);
         }
       }
       ctx.restore();
