@@ -22,6 +22,13 @@
       background: black;
     }
     video { display: none; }
+    #zoom {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 300px;
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
@@ -30,11 +37,19 @@
 <body>
   <video id="video" autoplay playsinline></video>
   <canvas id="output"></canvas>
+  <input type="range" id="zoom" min="0.3" max="1" step="0.05" value="0.8">
 
   <script>
     const videoElement = document.getElementById('video');
     const canvas = document.getElementById('output');
     const ctx = canvas.getContext('2d');
+    const zoomSlider = document.getElementById('zoom');
+
+    let zoomFactor = 0.8; // начальное приближение
+
+    zoomSlider.addEventListener('input', () => {
+      zoomFactor = parseFloat(zoomSlider.value);
+    });
 
     const hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
@@ -62,15 +77,15 @@
 
       const halfWidth = canvas.width / 2;
       const height = canvas.height;
-      const viewWidth = halfWidth * 0.8; // уменьшили для отдаления
-      const viewHeight = height * 0.8;
+      const viewWidth = halfWidth * zoomFactor;
+      const viewHeight = height * zoomFactor;
       const offsetY = (height - viewHeight) / 2;
 
-      // маска линз
+      // фон
       ctx.fillStyle = "black";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // рисуем круг для левой линзы
+      // левая линза
       ctx.save();
       ctx.beginPath();
       ctx.arc(halfWidth/2, height/2, viewHeight/2, 0, Math.PI*2);
@@ -83,7 +98,7 @@
       }
       ctx.restore();
 
-      // рисуем круг для правой линзы
+      // правая линза
       ctx.save();
       ctx.beginPath();
       ctx.arc(halfWidth + halfWidth/2, height/2, viewHeight/2, 0, Math.PI*2);
