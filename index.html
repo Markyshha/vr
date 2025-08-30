@@ -8,13 +8,10 @@
     body, html {
       margin: 0;
       padding: 0;
-      overflow: hidden;
       background: black;
       width: 100%;
       height: 100%;
-    }
-    video {
-      display: none;
+      overflow: hidden;
     }
     canvas {
       position: absolute;
@@ -22,7 +19,9 @@
       left: 0;
       width: 100%;
       height: 100%;
+      background: black;
     }
+    video { display: none; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
@@ -51,9 +50,7 @@
     hands.onResults(onResults);
 
     const camera = new Camera(videoElement, {
-      onFrame: async () => {
-        await hands.send({image: videoElement});
-      },
+      onFrame: async () => { await hands.send({image: videoElement}); },
       width: 640,
       height: 480
     });
@@ -65,40 +62,58 @@
 
       const halfWidth = canvas.width / 2;
       const height = canvas.height;
+      const viewWidth = halfWidth * 0.8; // уменьшили для отдаления
+      const viewHeight = height * 0.8;
+      const offsetY = (height - viewHeight) / 2;
 
-      // Рисуем видео дважды для VR
-      ctx.drawImage(results.image, 0, 0, halfWidth, height);
-      ctx.drawImage(results.image, halfWidth, 0, halfWidth, height);
+      // маска линз
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Рисуем руки с обеих сторон
+      // рисуем круг для левой линзы
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(halfWidth/2, height/2, viewHeight/2, 0, Math.PI*2);
+      ctx.clip();
+      ctx.drawImage(results.image, halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
       if (results.multiHandLandmarks) {
         for (const landmarks of results.multiHandLandmarks) {
-          drawHand(landmarks, 0, halfWidth, height);
-          drawHand(landmarks, halfWidth, halfWidth, height);
+          drawHand(landmarks, halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
         }
       }
+      ctx.restore();
+
+      // рисуем круг для правой линзы
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(halfWidth + halfWidth/2, height/2, viewHeight/2, 0, Math.PI*2);
+      ctx.clip();
+      ctx.drawImage(results.image, halfWidth + halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
+      if (results.multiHandLandmarks) {
+        for (const landmarks of results.multiHandLandmarks) {
+          drawHand(landmarks, halfWidth + halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
+        }
+      }
+      ctx.restore();
     }
 
-    function drawHand(landmarks, offsetX, width, height) {
-      const connections = Hands.HAND_CONNECTIONS;
+    function drawHand(landmarks, offsetX, offsetY, width, height) {
       ctx.strokeStyle = "lime";
       ctx.lineWidth = 2;
       ctx.fillStyle = "red";
 
-      // Соединения
+      const connections = Hands.HAND_CONNECTIONS;
       for (let [start, end] of connections) {
         const p1 = landmarks[start];
         const p2 = landmarks[end];
         ctx.beginPath();
-        ctx.moveTo(p1.x * width + offsetX, p1.y * height);
-        ctx.lineTo(p2.x * width + offsetX, p2.y * height);
+        ctx.moveTo(p1.x * width + offsetX, p1.y * height + offsetY);
+        ctx.lineTo(p2.x * width + offsetX, p2.y * height + offsetY);
         ctx.stroke();
       }
-
-      // Точки
       for (let point of landmarks) {
         ctx.beginPath();
-        ctx.arc(point.x * width + offsetX, point.y * height, 4, 0, 2 * Math.PI);
+        ctx.arc(point.x * width + offsetX, point.y * height + offsetY, 4, 0, 2 * Math.PI);
         ctx.fill();
       }
     }
