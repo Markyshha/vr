@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>VR Камера + Руки</title>
+  <title>VR Камера + Руки (с нормальным зумом)</title>
   <style>
     body {
       margin: 0;
@@ -29,6 +29,8 @@
     .half {
       flex: 1;
       position: relative;
+      overflow: hidden;
+      background: black;
     }
     video, canvas {
       position: absolute;
@@ -47,7 +49,7 @@
     <button id="toggleBtn" style="display:none;">Скрыть настройки</button>
     <button id="fsBtn" style="display:none;">⛶ Полный экран</button>
     <br>
-    Зум: <input type="range" id="zoomSlider" min="1" max="3" step="0.1" value="1">
+    Зум: <input type="range" id="zoomSlider" min="0.5" max="2" step="0.1" value="1">
   </div>
 
   <div id="vr-container">
@@ -83,8 +85,17 @@
 
     zoomSlider.oninput = () => {
       zoom = parseFloat(zoomSlider.value);
+
       video.style.transform = `scale(${zoom}) scaleX(-1)`;
       video2.style.transform = `scale(${zoom}) scaleX(-1)`;
+
+      if (zoom < 1) {
+        video.style.objectFit = "contain";
+        video2.style.objectFit = "contain";
+      } else {
+        video.style.objectFit = "cover";
+        video2.style.objectFit = "cover";
+      }
     };
 
     startBtn.onclick = async () => {
