@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>AR Cardboard Viewer</title>
+  <style>
+    :root{
+      --ui-bg: rgba(0,0,0,.6);
+      --ui-border: rgba(255,255,255,.18);
+      --accent: #4ade80;
+      --text: #fff;
+    }
+    html,body{margin:0;height:100%;background:#000;color:var(--text);font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";}
+    .app{position:fixed;inset:0;display:flex;flex-direction:column}
+    .stage{position:relative;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:0;align-items:stretch;}
+    .eye{position:relative;overflow:hidden;background:#000}
+    canvas{display:block;width:100%;height:100%}
+    video{display:none}
+    .divider{position:absolute;top:0;bottom:0;left:50%;width:2px;background:rgba(255,255,255,.08);z-index:5}
+    .hud{position:absolute;inset:0;pointer-events:none}
+    .cross{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:30%;height:30%;opacity:.35}
+    .cross:before,.cross:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;background:rgba(255,255,255,.4);transform:translateX(-50%)}
+    .cross:after{left:0;right:0;top:50%;height:2px;width:auto;background:rgba(255,255,255,.4);}
+
+    .panel{position:absolute;left:12px;right:12px;bottom:12px;z-index:10;background:var(--ui-bg);backdrop-filter: blur(8px); border:1px solid var(--ui-border); padding:10px 12px;border-radius:14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .panel.hidden{display:none}
+    .chip{border:1px solid var(--ui-border);border-radius:999px;padding:8px 12px;background:rgba(255,255,255,.05);display:inline-flex;gap:8px;align-items:center}
+    .btn{cursor:pointer;border:1px solid var(--ui-border);background:rgba(255,255,255,.06);padding:10px 14px;border-radius:12px;color:var(--text)}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:linear-gradient(180deg, rgba(74,222,128,.25), rgba(74,222,128,.15));border-color:rgba(74,222,128,.5)}
+    label{font-size:12px;opacity:.9}
+    input[type="range"]{width:120px}
+    .topbar{position:absolute;top:10px;left:10px;right:10px;z-index:10;display:flex;justify-content:space-between;gap:8px}
+    .ghost{pointer-events:none;position:absolute;inset:0;border-left:1px dashed rgba(255,255,255,.1);border-right:1px dashed rgba(255,255,255,.1)}
+    .gear{pointer-events:auto}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="stage">
+      <div class="eye"><canvas id="left"></canvas></div>
+      <div class="eye"><canvas id="right"></canvas></div>
+      <div class="divider"></div>
+      <div class="hud">
+        <div class="cross"></div>
+        <div class="ghost"></div>
+      </div>
+      <video id="video" playsinline autoplay muted></video>
+    </div>
+
+    <div class="topbar">
+      <button class="btn gear" id="togglePanel" title="Показать/скрыть настройки">⚙️</button>
+      <div style="display:flex; gap:8px">
+        <button class="btn" id="flipCam" title="Переключить камеру">🔁 Камера</button>
+        <button class="btn" id="torchBtn" title="Фонарик">🔦</button>
+        <button class="btn primary" id="fullscreenBtn" title="Полноэкранный режим">⛶ Fullscreen</button>
+      </div>
+    </div>
+
+    <div class="panel" id="panel">
+      <div class="chip">
+        <label>IPD (межзрачковое): <span id="ipdVal">60</span> мм</label>
+        <input id="ipd" type="range" min="52" max="74" value="60" step="1" />
+      </div>
+      <div class="chip">
+        <label>Зум: <span id="zoomVal">1.1×</span></label>
+        <input id="zoom" type="range" min="1" max="2" value="1.1" step="0.01" />
+      </div>
+      <div class="chip">
+        <label>Гор. сдвиг: <span id="hVal">0</span>%</label>
+        <input id="hOff" type="range" min="-10" max="10" value="0" step="0.1" />
+      </div>
+      <div class="chip">
+        <label>Верт. сдвиг: <span id="vVal">0</span>%</label>
+        <input id="vOff" type="range" min="-10" max="10" value="0" step="0.1" />
+      </div>
+      <div class="chip">
+        <label>Линзы (радиус): <span id="radVal">0</span>%</label>
+        <input id="rad" type="range" min="0" max="50" value="0" step="1" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const left = document.getElementById('left');
+    const right = document.getElementById('right');
+
+    const ipd = document.getElementById('ipd');
+    const zoom = document.getElementById('zoom');
+    const hOff = document.getElementById('hOff');
+    const vOff = document.getElementById('vOff');
+    const rad = document.getElementById('rad');
+
+    const ipdVal = document.getElementById('ipdVal');
+    const zoomVal = document.getElementById('zoomVal');
+    const hVal = document.getElementById('hVal');
+    const vVal = document.getElementById('vVal');
+    const radVal = document.getElementById('radVal');
+
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const torchBtn = document.getElementById('torchBtn');
+    const flipCamBtn = document.getElementById('flipCam');
+    const togglePanelBtn = document.getElementById('togglePanel');
+    const panel = document.getElementById('panel');
+
+    let stream = null;
+    let usingBack = true;
+    let torchOn = false;
+
+    function updateLabels(){
+      ipdVal.textContent = ipd.value;
+      zoomVal.textContent = Number(zoom.value).toFixed(2)+"×";
+      hVal.textContent = hOff.value;
+      vVal.textContent = vOff.value;
+      radVal.textContent = rad.value;
+    }
+
+    updateLabels();
+    [ipd, zoom, hOff, vOff, rad].forEach(el=>el.addEventListener('input', updateLabels));
+
+    function fitCanvas(){
+      const w = left.clientWidth;
+      const h = left.clientHeight;
+      [left,right].forEach(c=>{c.width = w*devicePixelRatio; c.height = h*devicePixelRatio});
+    }
+
+    let animationId;
+
+    function draw(){
+      const lc = left.getContext('2d');
+      const rc = right.getContext('2d');
+      const cw = left.width, ch = left.height;
+      lc.clearRect(0,0,cw,ch); rc.clearRect(0,0,cw,ch);
+      if(video.readyState < 2){ animationId = requestAnimationFrame(draw); return; }
+      const vw = video.videoWidth, vh = video.videoHeight;
+      // Рассчёт масштаба, чтобы покрыть канвас целиком
+      const scale = Number(zoom.value) * Math.max(cw/vw, ch/vh);
+      const drawW = vw * scale; const drawH = vh * scale;
+      const centerX = cw/2; const centerY = ch/2;
+
+      // Перевод процентов в пиксели
+      const hShift = (Number(hOff.value)/100) * cw; // общий базовый сдвиг
+      const vShift = (Number(vOff.value)/100) * ch;
+      // IPD: половину IPD переводим в относительный сдвиг (в пикселях),
+      // грубая модель: 64 мм ~ 1/7 ширины экрана телефона. Подберём коэффициент.
+      const ipdMm = Number(ipd.value);
+      const ipdPx = (ipdMm / 64) * (cw * 0.14); // эмпирично, регулируется ползунком
+
+      // Функция рисования глаза
+      const drawEye = (ctx, eyeOffsetX)=>{
+        const x = centerX - drawW/2 + eyeOffsetX + hShift;
+        const y = centerY - drawH/2 + vShift;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(video, 0, 0, vw, vh, x, y, drawW, drawH);
+      }
+
+      drawEye(lc, -ipdPx/2); // левый
+      drawEye(rc, +ipdPx/2); // правый
+
+      // Маска под круглые линзы
+      const radiusPct = Number(rad.value);
+      if(radiusPct>0){
+        [left,right].forEach((c)=>{
+          const ctx = c.getContext('2d');
+          ctx.globalCompositeOperation = 'destination-in';
+          ctx.beginPath();
+          const r = Math.min(c.width, c.height)/2 * (1 - (50-radiusPct)/100 * 0.2);
+          ctx.arc(c.width/2, c.height/2, r, 0, Math.PI*2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'source-over';
+        });
+      }
+
+      animationId = requestAnimationFrame(draw);
+    }
+
+    async function startCamera(){
+      try{
+        if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+        const constraints = {
+          audio:false,
+          video:{
+            facingMode: usingBack? {exact:'environment'} : 'user',
+            width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:60, max:60}
+          }
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        await video.play();
+        fitCanvas();
+        if(animationId) cancelAnimationFrame(animationId);
+        draw();
+      }catch(e){
+        alert('Нет доступа к камере или браузер не поддерживает getUserMedia. '+e);
+        console.error(e);
+      }
+    }
+
+    function onResize(){ fitCanvas(); }
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+
+    togglePanelBtn.addEventListener('click',()=>{
+      panel.classList.toggle('hidden');
+    });
+
+    fullscreenBtn.addEventListener('click', async ()=>{
+      try{
+        const root = document.documentElement;
+        if(!document.fullscreenElement){
+          await root.requestFullscreen();
+          try{ await screen.orientation.lock('landscape'); }catch(_){}
+        } else {
+          await document.exitFullscreen();
+        }
+      }catch(e){ console.warn(e); }
+    });
+
+    flipCamBtn.addEventListener('click', async ()=>{
+      usingBack = !usingBack; startCamera();
+    });
+
+    torchBtn.addEventListener('click', async ()=>{
+      try{
+        if(!stream) return;
+        const track = stream.getVideoTracks()[0];
+        const capabilities = track.getCapabilities?.();
+        if(capabilities && 'torch' in capabilities){
+          torchOn = !torchOn;
+          await track.applyConstraints({advanced:[{torch: torchOn}]});
+        } else {
+          alert('Фонарик не поддерживается этим браузером/устройством');
+        }
+      }catch(e){ alert('Не удалось переключить фонарик'); console.warn(e); }
+    });
+
+    // Запуск
+    startCamera();
+
+    // Подсказка: скрывать панель через 6 секунд
+    setTimeout(()=>{ panel.classList.add('hidden'); }, 6000);
+  </script>
+</body>
+</html>
