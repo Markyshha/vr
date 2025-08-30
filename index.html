@@ -1,241 +1,258 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VR Камера</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            background-color: #000;
-            color: #fff;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .header {
-            padding: 10px;
-            text-align: center;
-            background-color: #000;
-            border-bottom: 1px solid #333;
-        }
-        
-        .camera-container {
-            flex: 1;
-            position: relative;
-            overflow: hidden;
-            background-color: #000;
-        }
-        
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        
-        .vr-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-        
-        .lens {
-            position: absolute;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 45%;
-            height: 70%;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            box-sizing: border-box;
-        }
-        
-        .lens-left {
-            left: 2.5%;
-        }
-        
-        .lens-right {
-            right: 2.5%;
-        }
-        
-        .divider {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 1px;
-            height: 100%;
-            background-color: rgba(255, 255, 255, 0.2);
-        }
-        
-        .controls {
-            padding: 15px;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            background-color: #000;
-            border-top: 1px solid #333;
-        }
-        
-        button {
-            padding: 12px 25px;
-            background-color: #333;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        
-        button:hover {
-            background-color: #444;
-        }
-        
-        button:disabled {
-            background-color: #222;
-            color: #666;
-            cursor: not-allowed;
-        }
-        
-        .warning {
-            color: #ff4444;
-            text-align: center;
-            padding: 10px;
-        }
-        
-        .fullscreen-message {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            color: #fff;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 20px;
-            border-radius: 8px;
-            display: none;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>AR-Рисовалка пальцем (Web)</title>
+  <style>
+    :root{
+      --bg:#0b0f14;--panel:#101720;--muted:#66768a;--accent:#4cc9f0;--ok:#2dd4bf;--danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial}
+    .app{display:grid;grid-template-rows:auto 1fr auto;min-height:100dvh}
+    header,footer{padding:10px 12px;background:linear-gradient(180deg,#0e1520,#0b0f14)}
+    header{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+    .tag{font-size:12px;color:var(--muted)}
+    .wrap{position:relative;isolation:isolate;display:grid;place-items:center;background:#000}
+    video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+    canvas{position:absolute;inset:0;touch-action:none}
+    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{background:var(--panel);border:1px solid #1f2937;color:#e6edf3;padding:8px 12px;border-radius:12px;cursor:pointer}
+    .btn:hover{border-color:#334155}
+    .btn.danger{border-color:#3f1d1d;color:#fecaca}
+    .btn.ok{border-color:#0f3b35;color:#d1faf5}
+    .row{display:flex;gap:12px;align-items:center}
+    label{font-size:12px;color:#9aa9bb}
+    input[type="color"],input[type="range"]{accent-color:var(--accent)}
+    .legend{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.5);backdrop-filter:blur(6px);padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);font-size:12px;color:#d1d9e6}
+    .status{font-size:12px;color:#a6b3c2}
+  </style>
 </head>
 <body>
-    <div class="header">
-        <h1>VR КАМЕРА</h1>
-    </div>
-    
-    <div class="camera-container">
-        <video id="video" autoplay playsinline></video>
-        <div class="vr-overlay">
-            <div class="lens lens-left"></div>
-            <div class="lens lens-right"></div>
-            <div class="divider"></div>
-        </div>
-        <div class="fullscreen-message" id="fullscreenMessage">
-            Поверните телефон в горизонтальное положение для VR
-        </div>
-    </div>
-    
-    <div class="controls">
-        <button id="startButton">ВКЛЮЧИТЬ КАМЕРУ</button>
-        <button id="stopButton" disabled>ВЫКЛЮЧИТЬ</button>
-    </div>
-    
-    <p class="warning" id="warning"></p>
+  <div class="app">
+    <header>
+      <h1>AR‑рисование указательным пальцем</h1>
+      <span class="tag">MediaPipe Hands + Canvas</span>
+      <div class="controls" style="margin-left:auto">
+        <div class="row"><label>Цвет</label><input id="color" type="color" value="#00ffd5"></div>
+        <div class="row"><label>Кисть</label><input id="size" type="range" min="2" max="24" value="6"></div>
+        <button class="btn ok" id="save">Скачать PNG</button>
+        <button class="btn" id="flip">Зеркало: вкл</button>
+        <button class="btn danger" id="clear">Очистить</button>
+      </div>
+    </header>
 
-    <script>
-        const video = document.getElementById('video');
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
-        const warning = document.getElementById('warning');
-        const fullscreenMessage = document.getElementById('fullscreenMessage');
-        
-        let stream = null;
-        
-        // Функция для запуска камеры
-        async function startCamera() {
-            try {
-                // Запрос доступа к камере
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment',
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
-                    } 
-                });
-                
-                video.srcObject = stream;
-                startButton.disabled = true;
-                stopButton.disabled = false;
-                warning.textContent = '';
-                
-                // Автоматически переходим в полноэкранный режим
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen().catch(err => {
-                        console.error('Ошибка полноэкранного режима:', err);
-                    });
-                }
-                
-                // Проверяем ориентацию
-                checkOrientation();
-                
-            } catch (error) {
-                console.error('Ошибка доступа к камере:', error);
-                warning.textContent = 'Не удалось получить доступ к камере. Проверьте разрешения.';
-            }
-        }
-        
-        // Функция для остановки камеры
-        function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
-            }
-            video.srcObject = null;
-            startButton.disabled = false;
-            stopButton.disabled = true;
-            
-            // Выходим из полноэкранного режима
-            if (document.fullscreenElement) {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
-            }
-        }
-        
-        // Проверка ориентации устройства
-        function checkOrientation() {
-            if (window.innerHeight > window.innerWidth) {
-                // Портретная ориентация
-                fullscreenMessage.style.display = 'block';
-            } else {
-                // Альбомная ориентация
-                fullscreenMessage.style.display = 'none';
-            }
-        }
-        
-        // Обработчики событий для кнопок
-        startButton.addEventListener('click', startCamera);
-        stopButton.addEventListener('click', stopCamera);
-        
-        // Слушатель изменения ориентации
-        window.addEventListener('resize', checkOrientation);
-        
-        // Проверяем поддержку API
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            warning.textContent = 'Ваш браузер не поддерживает доступ к камере.';
-            startButton.disabled = true;
-        }
-    </script>
+    <div class="wrap">
+      <video id="video" playsinline muted></video>
+      <!-- Рисунок сохраняем на одном холсте, оверлеи/гиды — на другом -->
+      <canvas id="paint"></canvas>
+      <canvas id="overlay"></canvas>
+      <div class="legend">
+        Сомкните большой и указательный пальцы, чтобы рисовать. Разомкните — чтобы перестать.
+        <div class="status" id="status">Загрузка модели…</div>
+      </div>
+    </div>
+
+    <footer>
+      <div class="status">Советы: обеспечьте хорошее освещение, держите камеру на уровне поверхности. На iOS Safari разрешите доступ к камере.</div>
+    </footer>
+  </div>
+
+  <!-- MediaPipe Tasks Vision (WASM) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.mjs" type="module"></script>
+  <script type="module">
+    import {HandLandmarker, FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.mjs";
+
+    const video = document.getElementById('video');
+    const paint = document.getElementById('paint');
+    const overlay = document.getElementById('overlay');
+    const ctxPaint = paint.getContext('2d');
+    const ctx = overlay.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const colorEl = document.getElementById('color');
+    const sizeEl = document.getElementById('size');
+    const clearBtn = document.getElementById('clear');
+    const saveBtn = document.getElementById('save');
+    const flipBtn = document.getElementById('flip');
+
+    let mirror = true;
+    flipBtn.onclick = () => {
+      mirror = !mirror;
+      video.style.transform = mirror ? 'scaleX(-1)' : 'none';
+      flipBtn.textContent = `Зеркало: ${mirror?'вкл':'выкл'}`;
+    };
+
+    function fitCanvases(){
+      const r = overlay.getBoundingClientRect();
+      for (const c of [paint, overlay]){
+        c.width = r.width * devicePixelRatio;
+        c.height = r.height * devicePixelRatio;
+        c.style.width = r.width + 'px';
+        c.style.height = r.height + 'px';
+      }
+      ctxPaint.lineCap = 'round';
+      ctxPaint.lineJoin = 'round';
+    }
+
+    window.addEventListener('resize', fitCanvases);
+
+    clearBtn.onclick = ()=>{
+      ctxPaint.clearRect(0,0,paint.width,paint.height);
+    };
+
+    saveBtn.onclick = ()=>{
+      // Сохраняем объединённый кадр (видео + рисунок)
+      const out = document.createElement('canvas');
+      out.width = paint.width; out.height = paint.height;
+      const octx = out.getContext('2d');
+      // Снимок видео
+      octx.save();
+      if(mirror){
+        octx.translate(out.width,0); octx.scale(-1,1);
+      }
+      octx.drawImage(video, 0, 0, out.width, out.height);
+      octx.restore();
+      // Рисунок
+      octx.drawImage(paint,0,0);
+      const link = document.createElement('a');
+      link.download = 'ar-draw.png';
+      link.href = out.toDataURL('image/png');
+      link.click();
+    };
+
+    // Камера
+    async function setupCamera(){
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      video.srcObject = stream;
+      await video.play();
+      // Подгоняем контейнер под видео
+      function sizeWrap(){
+        const wrap = document.querySelector('.wrap');
+        const vw = wrap.clientWidth;
+        const vh = wrap.clientHeight;
+        // Ничего: абсолютные холсты подгоняются по resize observer позже
+      }
+      sizeWrap();
+      fitCanvases();
+    }
+
+    // HandLandmarker
+    let landmarker; let running = false;
+    let lastTime = 0; // для rAF throttle
+    const SMOOTH=0.45; // эксп. сглаживание
+
+    const prev = {x:null,y:null,draw:false};
+
+    function lerp(a,b,t){return a+(b-a)*t}
+
+    function drawPoint(x,y){
+      const w = paint.width, h = paint.height;
+      const size = parseFloat(sizeEl.value);
+      ctxPaint.strokeStyle = colorEl.value;
+      ctxPaint.lineWidth = size * devicePixelRatio;
+      if(prev.x===null){ prev.x=x; prev.y=y; }
+      ctxPaint.beginPath();
+      ctxPaint.moveTo(prev.x*w, prev.y*h);
+      ctxPaint.lineTo(x*w, y*h);
+      ctxPaint.stroke();
+      prev.x = x; prev.y = y;
+    }
+
+    function drawOverlay(landmarks){
+      ctx.clearRect(0,0,overlay.width,overlay.height);
+      if(!landmarks) return;
+      const w = overlay.width, h = overlay.height;
+      ctx.lineWidth = 2 * devicePixelRatio;
+      ctx.strokeStyle = 'rgba(76,201,240,.9)';
+      ctx.fillStyle = 'rgba(76,201,240,.9)';
+      // Рисуем только кончики пальцев
+      const tips = [4,8,12,16,20];
+      for(const id of tips){
+        const p = landmarks[id];
+        ctx.beginPath();
+        ctx.arc(p.x*w, p.y*h, 5*devicePixelRatio, 0, Math.PI*2);
+        ctx.fill();
+      }
+      // линия «кисть активна»
+      if(prev.draw){
+        ctx.beginPath();
+        ctx.moveTo(landmarks[8].x*w, landmarks[8].y*h);
+        ctx.lineTo(landmarks[4].x*w, landmarks[4].y*h);
+        ctx.stroke();
+      }
+    }
+
+    function pinchDistance(lm){
+      const a = lm[4], b = lm[8];
+      const dx=a.x-b.x, dy=a.y-b.y, dz=(a.z||0)-(b.z||0);
+      return Math.hypot(dx,dy,dz);
+    }
+
+    async function init(){
+      try{
+        statusEl.textContent = 'Загрузка модели…';
+        const fileset = await FilesetResolver.forVisionTasks(
+          // CDN с wasm-ассетами
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/wasm'
+        );
+        landmarker = await HandLandmarker.createFromOptions(fileset, {
+          baseOptions: {
+            // Лёгкая и быстрая модель
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+          },
+          numHands: 1,
+          runningMode: 'VIDEO'
+        });
+        statusEl.textContent = 'Готово. Разрешите камеру, покажите руку.';
+        await setupCamera();
+        running = true;
+        requestAnimationFrame(loop);
+      }catch(e){
+        console.error(e);
+        statusEl.textContent = 'Ошибка инициализации: ' + e.message;
+      }
+    }
+
+    function getVideoFrame(){
+      // для некоторых браузеров полезно отражать координаты при mirror
+      return video;
+    }
+
+    async function loop(t){
+      if(!running){return}
+      // ограничим частоту инференса
+      if(t - lastTime < 30){ return requestAnimationFrame(loop); }
+      lastTime = t;
+
+      const videoFrame = getVideoFrame();
+      const res = await landmarker.detectForVideo(videoFrame, performance.now());
+
+      if(res.landmarks && res.landmarks[0]){
+        const lm = res.landmarks[0];
+        // Координаты кончика указательного пальца
+        let x = lm[8].x, y = lm[8].y;
+        // При зеркале инвертируем X для согласованности с видео
+        if(mirror){ x = 1 - x; }
+        if(prev.x!=null){ x = lerp(prev.x, x, 1-SMOOTH); y = lerp(prev.y, y, 1-SMOOTH); }
+
+        // Признак «рисуем»: щепок (большой+указательный пальцы)
+        const dist = pinchDistance(lm);
+        const drawing = dist < 0.06; // эмпирический порог
+
+        if(drawing){ drawPoint(x,y); }
+        prev.draw = drawing;
+        drawOverlay(lm);
+      }else{
+        prev.x = prev.y = null; prev.draw = false;
+        ctx.clearRect(0,0,overlay.width,overlay.height);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    init();
+  </script>
 </body>
 </html>
