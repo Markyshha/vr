@@ -1,163 +1,241 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VR Камера с отслеживанием рук</title>
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      background: black;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      touch-action: manipulation;
-    }
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: black;
-    }
-    video { display: none; }
-    #zoom {
-      position: absolute;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 300px;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-    #startBtn {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 10px 20px;
-      background: white;
-      color: black;
-      border: none;
-      font-size: 18px;
-      border-radius: 10px;
-      cursor: pointer;
-      z-index: 10;
-    }
-  </style>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Камера</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            padding: 10px;
+            text-align: center;
+            background-color: #000;
+            border-bottom: 1px solid #333;
+        }
+        
+        .camera-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: #000;
+        }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        
+        .vr-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .lens {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 45%;
+            height: 70%;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            box-sizing: border-box;
+        }
+        
+        .lens-left {
+            left: 2.5%;
+        }
+        
+        .lens-right {
+            right: 2.5%;
+        }
+        
+        .divider {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 1px;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .controls {
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            background-color: #000;
+            border-top: 1px solid #333;
+        }
+        
+        button {
+            padding: 12px 25px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background-color: #444;
+        }
+        
+        button:disabled {
+            background-color: #222;
+            color: #666;
+            cursor: not-allowed;
+        }
+        
+        .warning {
+            color: #ff4444;
+            text-align: center;
+            padding: 10px;
+        }
+        
+        .fullscreen-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #fff;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+    </style>
 </head>
 <body>
-  <video id="video" autoplay playsinline></video>
-  <canvas id="output"></canvas>
-  <input type="range" id="zoom" min="0.3" max="1" step="0.05" value="0.8">
-  <button id="startBtn">Старт</button>
+    <div class="header">
+        <h1>VR КАМЕРА</h1>
+    </div>
+    
+    <div class="camera-container">
+        <video id="video" autoplay playsinline></video>
+        <div class="vr-overlay">
+            <div class="lens lens-left"></div>
+            <div class="lens lens-right"></div>
+            <div class="divider"></div>
+        </div>
+        <div class="fullscreen-message" id="fullscreenMessage">
+            Поверните телефон в горизонтальное положение для VR
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button id="startButton">ВКЛЮЧИТЬ КАМЕРУ</button>
+        <button id="stopButton" disabled>ВЫКЛЮЧИТЬ</button>
+    </div>
+    
+    <p class="warning" id="warning"></p>
 
-  <script>
-    const videoElement = document.getElementById('video');
-    const canvas = document.getElementById('output');
-    const ctx = canvas.getContext('2d');
-    const zoomSlider = document.getElementById('zoom');
-    const startBtn = document.getElementById('startBtn');
-
-    let zoomFactor = 0.8;
-    let sliderTimeout = null;
-    let camera, hands;
-
-    zoomSlider.addEventListener('input', () => {
-      zoomFactor = parseFloat(zoomSlider.value);
-      showSlider();
-    });
-
-    canvas.addEventListener('click', showSlider);
-
-    function showSlider() {
-      zoomSlider.style.opacity = 1;
-      clearTimeout(sliderTimeout);
-      sliderTimeout = setTimeout(() => {
-        zoomSlider.style.opacity = 0;
-      }, 3000);
-    }
-
-    startBtn.addEventListener('click', async () => {
-      startBtn.style.display = "none";
-
-      hands = new Hands({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-      });
-
-      hands.setOptions({
-        maxNumHands: 2,
-        modelComplexity: 1,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7
-      });
-
-      hands.onResults(onResults);
-
-      camera = new Camera(videoElement, {
-        onFrame: async () => { await hands.send({image: videoElement}); },
-        width: 640,
-        height: 480
-      });
-      camera.start();
-    });
-
-    function onResults(results) {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-
-      const halfWidth = canvas.width / 2;
-      const height = canvas.height;
-      const viewWidth = halfWidth * zoomFactor;
-      const viewHeight = height * zoomFactor;
-      const offsetY = (height - viewHeight) / 2;
-
-      ctx.fillStyle = "black";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      drawLens(results, halfWidth/2, halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
-      drawLens(results, halfWidth + halfWidth/2, halfWidth + halfWidth/2 - viewWidth/2, offsetY, viewWidth, viewHeight);
-    }
-
-    function drawLens(results, centerX, imgX, imgY, w, h) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(centerX, canvas.height/2, h/2, 0, Math.PI*2);
-      ctx.clip();
-      ctx.drawImage(results.image, imgX, imgY, w, h);
-      if (results.multiHandLandmarks) {
-        for (const landmarks of results.multiHandLandmarks) {
-          drawHand(landmarks, imgX, imgY, w, h);
+    <script>
+        const video = document.getElementById('video');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const warning = document.getElementById('warning');
+        const fullscreenMessage = document.getElementById('fullscreenMessage');
+        
+        let stream = null;
+        
+        // Функция для запуска камеры
+        async function startCamera() {
+            try {
+                // Запрос доступа к камере
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    } 
+                });
+                
+                video.srcObject = stream;
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                warning.textContent = '';
+                
+                // Автоматически переходим в полноэкранный режим
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                        console.error('Ошибка полноэкранного режима:', err);
+                    });
+                }
+                
+                // Проверяем ориентацию
+                checkOrientation();
+                
+            } catch (error) {
+                console.error('Ошибка доступа к камере:', error);
+                warning.textContent = 'Не удалось получить доступ к камере. Проверьте разрешения.';
+            }
         }
-      }
-      ctx.restore();
-    }
-
-    function drawHand(landmarks, offsetX, offsetY, width, height) {
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 2;
-      ctx.fillStyle = "red";
-
-      const connections = Hands.HAND_CONNECTIONS;
-      for (let [start, end] of connections) {
-        const p1 = landmarks[start];
-        const p2 = landmarks[end];
-        ctx.beginPath();
-        ctx.moveTo(p1.x * width + offsetX, p1.y * height + offsetY);
-        ctx.lineTo(p2.x * width + offsetX, p2.y * height + offsetY);
-        ctx.stroke();
-      }
-      for (let point of landmarks) {
-        ctx.beginPath();
-        ctx.arc(point.x * width + offsetX, point.y * height + offsetY, 4, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-    }
-  </script>
+        
+        // Функция для остановки камеры
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+            video.srcObject = null;
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            
+            // Выходим из полноэкранного режима
+            if (document.fullscreenElement) {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+        
+        // Проверка ориентации устройства
+        function checkOrientation() {
+            if (window.innerHeight > window.innerWidth) {
+                // Портретная ориентация
+                fullscreenMessage.style.display = 'block';
+            } else {
+                // Альбомная ориентация
+                fullscreenMessage.style.display = 'none';
+            }
+        }
+        
+        // Обработчики событий для кнопок
+        startButton.addEventListener('click', startCamera);
+        stopButton.addEventListener('click', stopCamera);
+        
+        // Слушатель изменения ориентации
+        window.addEventListener('resize', checkOrientation);
+        
+        // Проверяем поддержку API
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            warning.textContent = 'Ваш браузер не поддерживает доступ к камере.';
+            startButton.disabled = true;
+        }
+    </script>
 </body>
 </html>
